@@ -23,12 +23,13 @@ The whole power chain, end to end:
 
 1. **Dam pond → flume → overshot water wheel** — water pours onto the paddles
    and the wheel turns (splash and all); the tailrace leads the water away.
-2. **Crank + flatrod (stånggång)** — a parallel-crank (parallelogram) linkage:
-   equal cranks and rod length equal to the centre distance, so the rod stays
-   parallel to the crank-centre line and the driven crank follows the wheel 1:1.
-   Pendulum hangers (*svänghängsel*) on tall posts carry the rod.
-3. **Crank shaft + connecting rods** — short slider-crank links drive two pairs
-   of timber beams in exact counter-phase (one up, one down).
+2. **Crank + flatrod (stånggång)** — the wheel's crank drives the long
+   jointed flatrod (a four-bar linkage, solved exactly each frame). Pendulum
+   hangers (*svänghängsel*) on tall posts carry the rod.
+3. **Rocking beam (vippbom) + lift chains** — at the mine end nothing
+   rotates: the flatrod rocks a beam on the headframe, and the two pairs of
+   hooked timber beams hang on chains from its opposite arms — one pair
+   rises exactly as the other sinks, counterbalancing over the pivot.
 4. **The hook relay** — pair A (light timber, hooks at levels −8,−6,−2,0,2 …)
    and pair B (Falu red, hooks offset by half a spacing). The ore barrel is
    handed from hook to hook, exactly one spacing per half-stroke, from the
@@ -90,17 +91,16 @@ the narration timecodes to match).
 
 ## Model notes
 
-- **Kinematics are exact where it matters**: hook spacing equals one crank
-  stroke, so the receiving hook and the carried barrel meet at the same height
-  at every hand-over — the barrel's height is monotonically non-decreasing
-  (verified numerically over full cycles).
+- **Kinematics are exact where it matters**: the four-bar (wheel crank →
+  flatrod → rocker) is solved numerically each frame, and the rocker's swing
+  is calibrated so one stroke equals exactly one hook spacing — the receiving
+  hook and the carried barrel meet at the same height at every hand-over.
 - The barrel transfer needs no sideways motion: the trunnion pin spans both
   beam pairs and the two ledge sets sit at different depths along the pin.
-- Simplifications: no rope/chain at all (as per the real machine), the
-  parallel-crank linkage is idealised (real parallelogram drives duplicate the
-  rod to survive the change-point), hooks are plain ledges (historical ones
-  were latch-shaped for tolerance), and workers (loading/unloading) are implied
-  but not shown.
+- Simplifications: hooks are plain ledges (historical ones were latch-shaped
+  for tolerance), and workers (loading/unloading) are implied but not shown.
+  The lift chains are real (as in the museum model); it is the barrel relay
+  itself that uses no ropes.
 
 ## Tech
 

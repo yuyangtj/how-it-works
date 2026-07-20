@@ -35,11 +35,12 @@ scene. If a clip runs long, trim a sentence rather than speeding up the voice.
 > rod swings freely while the crank's push-pull passes through it, almost
 > without loss.
 
-## Scene 5 — 0:58–1:12 — Crank shaft, beams in counter-phase
+## Scene 5 — 0:58–1:12 — Rocking beam, beams in counter-phase
 
-> At the mine shaft, a second crank shaft converts the stroke back into
-> rotation. Its cranks drive two pairs of timber beams in exact counter-phase:
-> when one pair rises, the other falls. Watch them trade places.
+> At the headframe, the flatrod drives a rocking beam — the vippbom. From its
+> opposite arms, the two pairs of hooked timber beams hang on chains,
+> counterbalancing each other: when one pair rises, the other falls. Watch
+> them trade places.
 
 ## Scene 6 — 1:12–1:28 — Mine shaft and loading gallery
 
@@ -64,9 +65,9 @@ scene. If a clip runs long, trim a sentence rather than speeding up the voice.
 
 ## Scene 9 — 2:14–2:26 — Wrap-up overview
 
-> Pond, flume, wheel, flatrod, cranks, and hooks — one continuous chain of
-> water power, lifting ore from deep underground. Polhem's hook hoist, three
-> hundred years ahead of its time.
+> Pond, flume, wheel, flatrod, rocking beam, and hooks — one continuous chain
+> of water power, lifting ore from deep underground. Polhem's hook hoist,
+> three hundred years ahead of its time.
 
 ---
 

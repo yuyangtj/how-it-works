@@ -29,9 +29,14 @@ voiced with Gemini TTS and muxed in.
   node tools/record-headless.mjs hook-hoist/index.html out.webm
   ```
   Accepts a URL or a local HTML file (served over a temp HTTP server).
-  Options: `--size WxH` (default 1280x720), `--timeout s`, `--chrome path`.
-  Caveat: software GL → can be choppier than a real-GPU run; fine for
-  automation, use the in-page button for the final take if quality matters.
+  Options: `--size WxH` (default 1280x720), `--fps n` (default 30),
+  `--timeout s`, `--chrome path`. Requires `ffmpeg` on PATH.
+  Capture is frame-stepped on a virtual clock (`?record=1&capture=<fps>`,
+  handled inside `video-tour.js`): the page's sim and the tour advance exactly
+  1/fps per captured frame, so output is always smooth at the requested fps
+  regardless of how slowly headless software GL renders. This is the preferred
+  path for final takes too; the in-page 🎬 button records in real time via
+  MediaRecorder and depends on the machine's live frame rate.
 - `<topic>/VIDEO-NARRATION.md` — voice-over script per topic, one block per
   scene with exact timecodes matching the tour.
 
@@ -81,9 +86,13 @@ voiced with Gemini TTS and muxed in.
    ```bash
    node tools/record-headless.mjs <topic>/index.html /tmp/test.webm
    ffprobe -v error -show_entries format=duration -of default=nw=1 /tmp/test.webm
+   ffprobe -v error -count_frames -select_streams v \
+     -show_entries stream=nb_read_frames -of default=nw=1 /tmp/test.webm
    ffmpeg -y -v error -i /tmp/test.webm -ss <mid-scene> -frames:v 1 /tmp/frame.png
    ```
-   Check duration ≈ sum of scene durs, and **view the extracted frame** to
+   Check duration ≈ sum of scene durs, frame count ≈ duration × 30 (a much
+   lower count means the capture fell back to something non-frame-stepped —
+   investigate), and **view the extracted frame** to
    confirm the scene renders and labels are legible. Fix page errors the
    recorder prints — a null reference in the record path means no file.
 6. **Update the topic README**: button usage, headless command, TTS workflow.

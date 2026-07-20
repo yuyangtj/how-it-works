@@ -12,6 +12,27 @@ window.VideoTour = (() => {
   let recCanvas = null, recCtx = null;   // composite canvas: WebGL frame + labels
   let va = null, vb = null;              // temp vectors (created from cfg.THREE)
 
+  // Deterministic capture mode (?record=1&capture=<fps>): instead of recording
+  // in real time with MediaRecorder, freeze the clock to a virtual timeline and
+  // let tools/record-headless.mjs pull one composited PNG per frame via
+  // window.__vtFrame(). performance.now() and requestAnimationFrame are
+  // overridden before the page's module script runs, so the page's own
+  // THREE.Clock and render loop step by exactly 1/fps with no page changes.
+  const capFps = Number(new URLSearchParams(location.search).get('capture')) || 0;
+  let capFrame = 0;
+  const rafQueue = [];
+  if (capFps > 0) {
+    performance.now = () => capFrame / capFps * 1000;
+    window.requestAnimationFrame = cb => (rafQueue.push(cb), 0);
+    window.__vtFrame = () => {
+      if (recCanvas && tourT < 0) return null;        // tour finished
+      capFrame++;
+      const cbs = rafQueue.splice(0);
+      for (const cb of cbs) cb(performance.now());
+      return recCanvas ? recCanvas.toDataURL('image/png') : '';
+    };
+  }
+
   const easeIO = t => t < .5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
 
   function makeButton() {
@@ -27,7 +48,7 @@ window.VideoTour = (() => {
 
   function start(record) {
     if (tourT >= 0) return;
-    if (record && (typeof MediaRecorder === 'undefined' ||
+    if (record && !capFps && (typeof MediaRecorder === 'undefined' ||
                    !document.createElement('canvas').captureStream)) {
       alert('MediaRecorder is not supported in this browser — try Chrome or Edge.');
       return;
@@ -43,6 +64,7 @@ window.VideoTour = (() => {
     recCanvas.width = cfg.renderer.domElement.width;
     recCanvas.height = cfg.renderer.domElement.height;
     recCtx = recCanvas.getContext('2d');
+    if (capFps) return;                  // frames are pulled via __vtFrame()
     const mime = ['video/webm;codecs=vp9', 'video/webm', '']
       .find(m => !m || MediaRecorder.isTypeSupported(m));
     recorder = new MediaRecorder(recCanvas.captureStream(30),
@@ -92,7 +114,7 @@ window.VideoTour = (() => {
   // While recording: copy the WebGL frame and stamp the visible labels on top,
   // styled like on-screen chips. Call once per frame after rendering.
   function composite() {
-    if (!recorder) return;
+    if (!recorder && !(capFps && recCanvas)) return;
     const src = cfg.renderer.domElement;
     if (recCanvas.width !== src.width || recCanvas.height !== src.height) {
       recCanvas.width = src.width; recCanvas.height = src.height;

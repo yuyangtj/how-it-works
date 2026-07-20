@@ -58,7 +58,19 @@ No screen recording needed — the model records itself, either from the
 browser or fully headless. The machinery lives in the shared, topic-agnostic
 `../video-tour.js`; this page only defines the storyboard (`SCENES`).
 
-**In-browser (best quality, real GPU):**
+**Headless (preferred — smooth 30 fps regardless of machine speed):**
+
+```bash
+node ../tools/record-headless.mjs index.html hakspelet.webm   # from hook-hoist/
+# or from the project root:
+node tools/record-headless.mjs hook-hoist/index.html hakspelet.webm
+```
+
+Capture is frame-stepped on a virtual clock, so the sim and camera advance
+exactly 1/30 s per frame and the output is fluent even under software GL.
+Options: `--size WxH`, `--fps n`, `--timeout s`. Requires `ffmpeg`.
+
+**In-browser (real-time MediaRecorder):**
 
 1. Serve from the project root (`cd .. && python3 -m http.server 8000`) and
    open `http://localhost:8000/hook-hoist/` in Chrome or Edge. Size the
@@ -67,15 +79,7 @@ browser or fully headless. The machinery lives in the shared, topic-agnostic
    plays (2 min 26 s, following the power chain from dam pond to unload
    deck), and `hakspelet.webm` downloads when it ends. Press **Esc** or click
    the button again to stop early. `?tour=1` previews the tour without
-   recording.
-
-**Headless (no browser interaction, software GL):**
-
-```bash
-node ../tools/record-headless.mjs index.html hakspelet.webm   # from hook-hoist/
-# or from the project root:
-node tools/record-headless.mjs hook-hoist/index.html hakspelet.webm
-```
+   recording. Note this path records at the live frame rate of your machine.
 
 **Voice-over and assembly:**
 

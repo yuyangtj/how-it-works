@@ -1,0 +1,827 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hakspelet — Polhem's Hook Hoist in 3D</title>
+<style>
+  html, body { margin:0; height:100%; overflow:hidden; background:#dfe8ee;
+    font-family:-apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  #app { position:fixed; inset:0; }
+  .panel {
+    position:absolute; top:14px; left:14px; max-width:340px;
+    background:rgba(20,24,28,.82); color:#e8e4da; border-radius:10px;
+    padding:14px 16px; backdrop-filter:blur(6px); line-height:1.45;
+  }
+  #btnClose {
+    position:absolute; top:8px; right:10px; background:none; border:none;
+    color:#8fa3b0; font-size:15px; cursor:pointer; padding:2px 4px;
+  }
+  #btnClose:hover { color:#e8e4da; }
+  #btnInfo {
+    position:absolute; top:14px; left:14px; display:none;
+    background:rgba(20,24,28,.82); color:#f0c874; border:1px solid #55616e;
+    border-radius:8px; padding:7px 12px; font-size:12.5px; cursor:pointer;
+    backdrop-filter:blur(6px);
+  }
+  #btnInfo:hover { background:rgba(40,48,56,.9); }
+  .panel h1 { font-size:16px; margin:0 0 6px; color:#f0c874; }
+  .panel p { font-size:12.5px; margin:0 0 8px; color:#cfc9bb; }
+  #status { font-size:13px; font-weight:600; color:#9fd6a0; min-height:34px; }
+  #step { font-size:11.5px; color:#8fa3b0; margin-top:2px; }
+  #bar {
+    position:absolute; left:50%; bottom:14px; transform:translateX(-50%);
+    display:flex; gap:10px; align-items:center;
+    background:rgba(20,24,28,.82); border-radius:10px; padding:9px 14px;
+    color:#e8e4da; font-size:12.5px; backdrop-filter:blur(6px);
+    flex-wrap:wrap; justify-content:center; max-width:94vw;
+  }
+  #bar button {
+    background:#3a4652; color:#e8e4da; border:1px solid #55616e; border-radius:6px;
+    padding:5px 10px; font-size:12.5px; cursor:pointer;
+  }
+  #bar button:hover { background:#4a5866; }
+  #bar button.active { background:#6b5a2e; border-color:#f0c874; }
+  #bar input[type=range] { width:110px; }
+  .lbl {
+    background:rgba(20,24,28,.78); color:#f0e6c8; font-size:11.5px;
+    padding:3px 8px; border-radius:5px; white-space:nowrap;
+    border:1px solid rgba(240,200,116,.35); pointer-events:none;
+  }
+  .lbl.small { font-size:10.5px; color:#b9c6cf; border-color:rgba(150,170,190,.3); }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<div class="panel" id="infoPanel">
+  <button id="btnClose" title="Close">✕</button>
+  <h1>Hakspelet — Polhem's Hook Hoist</h1>
+  <p>Falun copper mine, c. 1700. Water from the dam pond runs down the
+  <b>flume</b> onto the <b>water wheel</b>; a crank and <b>flatrod</b>
+  (stånggång) carry its push-pull to the <b>crank shaft</b>, which works
+  <b>two pairs of hooked timber beams</b>. When one pair rises the other falls,
+  and the barrel is handed from hook to hook — no ropes at all.</p>
+  <p>The cutaway shows the <b>mine shaft</b>: barrels are hooked on in the
+  <b>loading gallery</b> below ground and climb the shaft one hook-spacing
+  per half-stroke — up to the hoist-house floor, just above the machinery.</p>
+  <div id="status"></div>
+  <div id="step"></div>
+</div>
+<button id="btnInfo">ⓘ Hakspelet — Hook Hoist</button>
+
+<div id="bar">
+  <button id="btnPause">⏸ Pause</button>
+  <label>Speed <input id="speed" type="range" min="0.25" max="2.5" step="0.25" value="1"></label>
+  <label><input id="chkLabels" type="checkbox" checked> Labels</label>
+  <label><input id="chkXray" type="checkbox"> X-ray ground</label>
+  <button class="view" data-v="overview">Overview</button>
+  <button class="view" data-v="mine">Mine shaft</button>
+  <button class="view" data-v="tower">Hoist tower</button>
+  <button class="view" data-v="wheel">Water wheel</button>
+  <button class="view" data-v="water">Water supply</button>
+</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+} }
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+import { Sky } from 'three/addons/objects/Sky.js';
+
+/* ---------------- Kinematic constants (the machine's real geometry) -------- */
+const OMEGA   = -0.55;                    // water-wheel speed, rad/s (clockwise from +z)
+const WHEEL   = { x: 11, y: 5.0, r: 2.3, crank: 0.6 };
+const SHAFT   = { x: 0,  y: 3.3, crankD: 0.6, crankB: 0.5 };
+// Parallel-crank (parallelogram) linkage: equal cranks + rod length = center
+// distance → the driven crank follows the wheel 1:1 (γ = θ), no toggles.
+const ROD_LEN = Math.hypot(WHEEL.x - SHAFT.x, WHEEL.y - SHAFT.y);
+const ROD_V   = 1.05;                     // connecting-rod length (crank → beam top)
+const CROSS   = 3.5;                      // drive crossbar position on beam (local, above hook 0)
+const H       = 1.0;                      // hook spacing = one stroke (exact, by construction)
+const L_MIN   = -8, L_MAX = 2;            // hook levels: −8 (gallery) … +2 (hoist-house floor)
+const NLEV    = L_MAX - L_MIN + 1;        // 12 carrying levels, then 2 unload half-strokes
+const ATT_MIN = SHAFT.y - SHAFT.crankB + ROD_V;            //  9.0
+const ATT_MAX = SHAFT.y + SHAFT.crankB + ROD_V;            // 10.0
+const TOP_Y   = ATT_MAX - CROSS + L_MAX;                   //  8.5  (pin height at top)
+const BOT_Y   = ATT_MIN - CROSS + L_MIN;                   // −3.5  (pin height at gallery)
+const DECK_TOP = TOP_Y - 0.45 - 0.32;     // deck surface so the barrel rolls off level
+
+// Height of a beam-pair's drive crossbar, given crank-shaft angle γ.
+// Slider-crank: pin swings on the crank, the rod pulls the beam end vertically.
+const attach = g => SHAFT.y + SHAFT.crankB * Math.sin(g) +
+                    Math.sqrt(ROD_V * ROD_V - Math.pow(SHAFT.crankB * Math.cos(g), 2));
+
+/* ---------------- Renderer / scene / sky ----------------------------------- */
+const app = document.getElementById('app');
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+app.appendChild(renderer.domElement);
+
+const labelRenderer = new CSS2DRenderer();
+labelRenderer.setSize(innerWidth, innerHeight);
+labelRenderer.domElement.style.cssText = 'position:absolute;top:0;left:0;pointer-events:none;';
+app.appendChild(labelRenderer.domElement);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.Fog(0xcfdbe6, 50, 130);
+
+const sky = new Sky();
+sky.scale.setScalar(450);
+const su = sky.material.uniforms;
+su.turbidity.value = 6;
+su.rayleigh.value = 1.5;
+su.mieCoefficient.value = 0.005;
+su.mieDirectionalG.value = 0.8;
+su.sunPosition.value.set(12, 18, 9).normalize();
+scene.add(sky);
+
+const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 600);
+camera.position.set(13.5, 7.5, 13.5);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(4.5, 3.6, 0);
+controls.enableDamping = true;
+controls.maxDistance = 60;
+
+scene.add(new THREE.HemisphereLight(0xeaf2f8, 0x8a7f6a, 0.7));
+const sun = new THREE.DirectionalLight(0xfff2dd, 2.0);
+sun.position.set(12, 18, 9);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -8, right: 18, top: 14, bottom: -11, near: 2, far: 45 });
+scene.add(sun);
+// lantern light in the loading gallery
+const lantern = new THREE.PointLight(0xffa050, 6, 11, 1.6);
+lantern.position.set(-0.8, -8.2, -3.0);
+scene.add(lantern);
+// soft fill so the shaft reads from a distance
+const shaftFill = new THREE.PointLight(0xffe0b0, 2.5, 13, 1.8);
+shaftFill.position.set(0.5, -4.5, 1.0);
+scene.add(shaftFill);
+
+/* ---------------- Materials & helpers ------------------------------------- */
+const wood    = new THREE.MeshStandardMaterial({ color: 0x8a5a2b, roughness: .85 });
+const woodDk  = new THREE.MeshStandardMaterial({ color: 0x64401d, roughness: .9 });
+const woodLt  = new THREE.MeshStandardMaterial({ color: 0xa9743d, roughness: .8 });
+const iron    = new THREE.MeshStandardMaterial({ color: 0x33343a, roughness: .5, metalness: .65 });
+const rock    = new THREE.MeshStandardMaterial({ color: 0x6e675e, roughness: 1 });
+const rockDk  = new THREE.MeshStandardMaterial({ color: 0x4c463f, roughness: 1 });
+const rockGlass = new THREE.MeshStandardMaterial({           // ghost earth — see-through pit walls
+  color: 0x6e675e, roughness: 1, transparent: true, opacity: 0.22, depthWrite: false });
+const pitFloorMat = new THREE.MeshStandardMaterial({ color: 0x4c463f, roughness: 1 });
+
+// procedural grass texture
+const grassMat = (() => {
+  const c = document.createElement('canvas'); c.width = c.height = 256;
+  const x = c.getContext('2d');
+  x.fillStyle = '#797549'; x.fillRect(0, 0, 256, 256);
+  const cols = ['#6d6a40', '#84804f', '#8f8a58', '#5f5c38', '#7f7c50', '#6a6e42'];
+  for (let i = 0; i < 2600; i++) {
+    x.fillStyle = cols[i % cols.length];
+    x.globalAlpha = 0.25 + Math.random() * 0.4;
+    const r = 1 + Math.random() * 3;
+    x.beginPath(); x.arc(Math.random() * 256, Math.random() * 256, r, 0, 7); x.fill();
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(20, 20);
+  return new THREE.MeshStandardMaterial({ map: tex, roughness: 1 });
+})();
+
+// scrolling water materials (each gets its own texture so speeds can differ)
+const waterMats = [];
+function makeWaterMat(speed = 1, opacity = 0.85, rotate = false, axis = 'y') {
+  const c = document.createElement('canvas'); c.width = 64; c.height = 128;
+  const x = c.getContext('2d');
+  x.fillStyle = '#4d7f96'; x.fillRect(0, 0, 64, 128);
+  for (let i = 0; i < 50; i++) {
+    x.strokeStyle = `rgba(230,242,248,${0.1 + Math.random() * 0.25})`;
+    x.lineWidth = 1 + Math.random() * 2;
+    const px = Math.random() * 64, py = Math.random() * 128, l = 6 + Math.random() * 18;
+    x.beginPath(); x.moveTo(px, py); x.lineTo(px + (Math.random() - 0.5) * 4, py + l); x.stroke();
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  if (rotate) { tex.center.set(0.5, 0.5); tex.rotation = Math.PI / 2; }
+  const mat = new THREE.MeshStandardMaterial({ map: tex, color: 0xbfd8e4, transparent: true, opacity, roughness: .3 });
+  mat.userData.speed = speed;
+  mat.userData.axis = axis;
+  waterMats.push(mat);
+  return mat;
+}
+const waterMt = makeWaterMat(0.1, 0.8);      // still water (trough)
+
+function box(w, h, d, mat, x = 0, y = 0, z = 0, parent = scene) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+  m.position.set(x, y, z); m.castShadow = m.receiveShadow = true;
+  parent.add(m); return m;
+}
+function cyl(r, h, mat, x = 0, y = 0, z = 0, axis = 'y', parent = scene, rSeg = 14) {
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, rSeg), mat);
+  if (axis === 'z') m.rotation.x = Math.PI / 2;
+  if (axis === 'x') m.rotation.z = Math.PI / 2;
+  m.position.set(x, y, z); m.castShadow = m.receiveShadow = true;
+  parent.add(m); return m;
+}
+// Unit-height span mesh re-aimed each frame between two points.
+const _up = new THREE.Vector3(0, 1, 0), _d = new THREE.Vector3();
+function span(mesh, p1, p2) {
+  _d.subVectors(p2, p1);
+  const len = _d.length();
+  mesh.position.copy(p1).addScaledVector(_d, 0.5);
+  mesh.scale.y = len;
+  mesh.quaternion.setFromUnitVectors(_up, _d.normalize());
+}
+function spanMesh(w, d, mat, parent = scene) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, 1, d), mat);
+  m.castShadow = true; parent.add(m); return m;
+}
+function makeLabel(text, cls = 'lbl') {
+  const div = document.createElement('div');
+  div.className = cls; div.textContent = text;
+  return new CSS2DObject(div);
+}
+
+/* ---------------- Ground slabs + open pit around the shaft ----------------- */
+// The earth is cut away in a square pit (x,z ∈ [−4, 4]) down to the gallery
+// floor, so the shaft and workings can be viewed from all four sides.
+{
+  const g = (w, h, d, x, y, z) => {
+    const m = box(w, h, d, grassMat, x, y, z); m.castShadow = false; return m;
+  };
+  g(90, 0.3, 40.7, 0, -0.15, -24.65);                      // north slab (z < −4.3)
+  g(90, 0.3, 40.7, 0, -0.15,  24.65);                      // south slab (z > 4.3)
+  g(40.7, 0.3, 8.6, -24.65, -0.15, 0);                     // west strip
+  g(40.7, 0.3, 8.6,  24.65, -0.15, 0);                     // east strip
+  // pit walls (earth cross-sections), with the tunnel mouth in the −z wall
+  box(0.3, 10.05, 8.4, rockGlass,  4.15, -4.875, 0);
+  box(0.3, 10.05, 8.4, rockGlass, -4.15, -4.875, 0);
+  box(8.4, 10.05, 0.3, rockGlass, 0, -4.875,  4.15);
+  box(3.45, 10.05, 0.3, rockGlass, -2.475, -4.875, -4.15);
+  box(3.45, 10.05, 0.3, rockGlass,  2.475, -4.875, -4.15);
+  box(1.5, 7.5, 0.3, rockGlass, 0, -3.6, -4.15);               // lintel over tunnel mouth
+  box(8.4, 0.2, 8.4, pitFloorMat, 0, -10.0, 0);              // pit floor
+  // heavy sills straddling the pit — headframe, crank bearings stand on these
+  for (const s of [-1, 1]) box(9.8, 0.18, 0.3, wood, 0, 0.09, s * 1.45);
+  box(0.3, 0.18, 9.8, wood, 3.5, 0.09, 0);                 // flatrod trestle bridge
+}
+
+/* ---------------- Scenery: pines and boulders ------------------------------ */
+{
+  const treeMat = new THREE.MeshStandardMaterial({ color: 0x39512f, roughness: 1 });
+  const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4d3a24, roughness: 1 });
+  const pine = (x, z, s) => {
+    const g = new THREE.Group(); g.position.set(x, 0, z); g.scale.setScalar(s); scene.add(g);
+    cyl(0.14, 1.4, trunkMat, 0, 0.7, 0, 'y', g);
+    for (const [r, h, y] of [[1.1, 2.0, 2.0], [0.8, 1.6, 3.1], [0.5, 1.2, 4.0]]) {
+      const c = new THREE.Mesh(new THREE.ConeGeometry(r, h, 8), treeMat);
+      c.position.y = y; c.castShadow = true; g.add(c);
+    }
+  };
+  [[16, 12, 1.1], [20, 16, 0.9], [-8, 14, 1.2], [-14, 6, 1.0], [-18, -4, 1.2],
+   [-10, -12, 0.9], [4, -14, 1.1], [14, -10, 1.0], [24, -8, 1.2], [-4, 20, 1.0],
+   [8, 18, 1.1], [26, 10, 0.8], [-22, 10, 1.0]].forEach(([x, z, s]) => pine(x, z, s));
+  for (const [x, z, s] of [[-6, 8, 0.5], [7, -8, 0.7], [-12, 12, 0.4], [18, 4, 0.6], [5, 12, 0.35]]) {
+    const r = new THREE.Mesh(new THREE.IcosahedronGeometry(s, 0), rock);
+    r.position.set(x, s * 0.4, z); r.castShadow = r.receiveShadow = true; scene.add(r);
+  }
+}
+
+/* ---------------- The mine shaft (open pit, timber-lined) ------------------ */
+{
+  // loading gallery (tunnel heading −z from the pit wall)
+  box(1.3, 0.2, 4.6, rockDk, 0, -9.9, -6.3);                     // gallery floor
+  box(0.2, 2.2, 4.6, rock,  0.75, -8.65, -6.3);
+  box(0.2, 2.2, 4.6, rock, -0.75, -8.65, -6.3);
+  box(1.7, 0.2, 4.6, rock, 0, -7.45, -6.3);                      // gallery roof
+  box(1.7, 2.5, 0.3, rockDk, 0, -8.6, -8.5);                     // dark end
+  // shaft lining: corner studs + horizontal sets
+  for (const sx of [-1, 1]) for (const sz of [-1, 1])
+    box(0.14, 9.6, 0.14, woodDk, sx * 1.44, -5.0, sz * 1.44);
+  for (const y of [-0.8, -2.0, -3.2, -4.4, -5.6, -6.8, -8.0, -9.2]) {
+    box(0.12, 0.16, 3.0, woodDk,  1.44, y, 0);
+    box(0.12, 0.16, 3.0, woodDk, -1.44, y, 0);
+    box(3.0, 0.16, 0.12, woodDk, 0, y,  1.44);
+    box(3.0, 0.16, 0.12, woodDk, 0, y, -1.44);
+  }
+  box(0.7, 0.5, 0.7, wood, 0, -8.8, 0);                          // loading stand
+  const lamp = box(0.12, 0.18, 0.12,
+    new THREE.MeshStandardMaterial({ color: 0xffc070, emissive: 0xff9030, emissiveIntensity: 2 }),
+    -1.4, -8.2, -4.6);
+  lamp.castShadow = false;
+}
+// spare barrels & ore in the gallery
+function staticBarrel(x, y, z) {
+  const g = new THREE.Group(); g.position.set(x, y, z); scene.add(g);
+  const b = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.29, 0.75, 14), wood);
+  b.castShadow = true; g.add(b);
+  for (const hy of [-0.25, 0.25]) {
+    const hoop = new THREE.Mesh(new THREE.TorusGeometry(0.315, 0.02, 8, 20), iron);
+    hoop.rotation.x = Math.PI / 2; hoop.position.y = hy; g.add(hoop);
+  }
+}
+staticBarrel(0.35, -9.42, -5.4);
+staticBarrel(-0.35, -9.42, -6.9);
+for (let i = 0; i < 6; i++) {
+  const ore = new THREE.Mesh(new THREE.IcosahedronGeometry(0.09 + Math.random() * 0.07, 0),
+    new THREE.MeshStandardMaterial({ color: [0x3a3230, 0x4a3b2f, 0x3f5a45][i % 3], roughness: .9 }));
+  ore.position.set(-1.0 + Math.random() * 0.5, -9.73, -4.7 - Math.random() * 0.8);
+  ore.castShadow = true; scene.add(ore);
+}
+
+/* ---------------- Headframe (straddles the shaft) -------------------------- */
+const TOWER_H = 5.3;
+for (const sx of [-1, 1]) for (const sz of [-1, 1])
+  box(0.18, TOWER_H, 0.18, wood, sx * 1.3, TOWER_H / 2, sz * 1.45);
+for (const sz of [-1, 1]) {
+  box(2.95, 0.16, 0.16, wood, 0, TOWER_H - 0.1, sz * 1.45);    // top x-beams
+  box(2.95, 0.14, 0.14, wood, 0, 2.9, sz * 1.45);              // mid x-beams
+}
+for (const sx of [-1, 1]) {
+  box(0.16, 0.16, 3.05, wood, sx * 1.3, TOWER_H - 0.3, 0);     // top z-beams
+  const b1 = box(0.1, 3.0, 0.1, woodDk, sx * 1.3, 3.5, 0); b1.rotation.x = 0.52;
+  const b2 = box(0.1, 3.0, 0.1, woodDk, sx * 1.3, 3.5, 0); b2.rotation.x = -0.52;
+  const b3 = box(0.1, 2.4, 0.1, woodDk, sx * 1.3, 1.5, 0); b3.rotation.x = 0.68;
+  const b4 = box(0.1, 2.4, 0.1, woodDk, sx * 1.3, 1.5, 0); b4.rotation.x = -0.68;
+}
+// Continuous guide timbers for the four beams (down into the shaft)
+for (const sx of [-1, 1]) for (const zz of [0.5, 0.85])
+  for (const sz of [-1, 1])
+    box(0.05, 14.1, 0.1, woodLt, sx * 0.115, -2.35, sz * zz);
+
+/* ---------------- The two pairs of hooked beams ---------------------------- */
+// Pair A (light timber): beams at z = ±0.50, hooks at levels −8,−6,−4,−2,0,2.
+// Pair B (dark timber):  beams at z = ±0.85, hooks at levels −7,−5,−3,−1,1.
+const hookMat = new THREE.MeshStandardMaterial({ color: 0x9aa2ad, roughness: .35, metalness: .7 });
+const woodB   = new THREE.MeshStandardMaterial({ color: 0x8e3326, roughness: .85 }); // Falu red oxide
+function makeBeamPair(zBeam, hookLevels, driveSpan, tieSpan, beamMat) {
+  const grp = new THREE.Group();                 // origin = height of hook level 0
+  for (const s of [-1, 1]) {
+    box(0.12, 13.55, 0.12, beamMat, 0, -3.225, s * zBeam, grp);  // beam −10.0 … 3.55
+    for (const L of hookLevels) {                                // hook ledges
+      box(0.05, 0.18, 0.06, hookMat, 0, L - 0.115, s * (zBeam - 0.09), grp);
+      box(0.16, 0.05, 0.2, hookMat, 0, L - 0.025, s * (zBeam - 0.16), grp);
+    }
+  }
+  box(0.14, 0.12, driveSpan, woodDk, 0, CROSS, 0, grp);          // drive crossbar (top)
+  box(0.16, 0.12, tieSpan, woodDk, 0, -9.9, 0, grp);             // bottom tie
+  scene.add(grp);
+  return grp;
+}
+const beamsA = makeBeamPair(0.50, [-8, -6, -4, -2, 0, 2], 2.3, 1.12, woodLt);
+const beamsB = makeBeamPair(0.85, [-7, -5, -3, -1, 1], 2.6, 1.82, woodB);
+
+/* ---------------- Crank shaft, cranks, connecting rods --------------------- */
+// bearing posts stand on the sills beside the shaft opening
+for (const s of [-1, 1]) {
+  box(0.15, SHAFT.y - 0.18, 0.15, woodDk, 0, (SHAFT.y + 0.18) / 2, s * 1.45);
+  box(0.22, 0.14, 0.22, woodDk, 0, SHAFT.y + 0.05, s * 1.45);
+}
+const shaftGroup = new THREE.Group();
+shaftGroup.position.set(SHAFT.x, SHAFT.y, 0);
+scene.add(shaftGroup);
+cyl(0.07, 3.5, iron, 0, 0, 0, 'z', shaftGroup);                  // the shaft itself
+function crankWeb(r, z, ang = 0) {
+  const arm = box(r, 0.09, 0.055, woodDk, 0, 0, z, shaftGroup);
+  arm.geometry.translate(0.5, 0, 0);
+  arm.rotation.z = ang;
+  const pin = cyl(0.05, 0.2, iron, 0, 0, z, 'z', shaftGroup);
+  pin.position.set(r * Math.cos(ang), r * Math.sin(ang), z);
+  return pin;
+}
+crankWeb(SHAFT.crankD, -1.60);           // driven crank (flatrod)
+crankWeb(SHAFT.crankB,  1.15);           // pair A cranks
+crankWeb(SHAFT.crankB, -1.15);
+crankWeb(SHAFT.crankB,  1.30, Math.PI);  // pair B cranks (opposite phase)
+crankWeb(SHAFT.crankB, -1.30, Math.PI);
+
+const rodsA = [spanMesh(0.07, 0.07, woodLt), spanMesh(0.07, 0.07, woodLt)];
+const rodsB = [spanMesh(0.07, 0.07, woodLt), spanMesh(0.07, 0.07, woodLt)];
+
+/* ---------------- Water wheel, crank --------------------------------------- */
+const wheelGroup = new THREE.Group();
+wheelGroup.position.set(WHEEL.x, WHEEL.y, 0);
+scene.add(wheelGroup);
+{
+  for (const s of [-1, 1]) {
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(WHEEL.r, 0.09, 10, 40), wood);
+    rim.position.z = s * 0.28; rim.castShadow = true; wheelGroup.add(rim);
+    for (let i = 0; i < 4; i++) {
+      const sp = box(0.1, WHEEL.r * 2 - 0.1, 0.07, woodDk, 0, 0, s * 0.28, wheelGroup);
+      sp.rotation.z = i * Math.PI / 4;
+    }
+  }
+  for (let i = 0; i < 12; i++) {
+    const a = i * Math.PI / 6;
+    const p = box(0.34, 0.5, 0.62, wood, Math.cos(a) * (WHEEL.r - 0.18),
+                  Math.sin(a) * (WHEEL.r - 0.18), 0, wheelGroup);
+    p.rotation.z = a + Math.PI / 2;
+  }
+  cyl(0.13, 3.0, woodDk, 0, 0, 0, 'z', wheelGroup);              // axle
+  cyl(0.24, 0.5, woodDk, 0, 0, 0, 'z', wheelGroup);              // hub
+  const web = box(0.09, WHEEL.crank, 0.07, woodDk, 0, 0, -0.36, wheelGroup);
+  web.geometry.translate(0, 0.5, 0);
+  cyl(0.055, 1.45, iron, WHEEL.crank, 0, -1.0, 'z', wheelGroup); // long crank pin
+}
+for (const s of [-1, 1]) {
+  box(0.2, WHEEL.y + 0.3, 0.2, woodDk, WHEEL.x, (WHEEL.y + 0.3) / 2, s * 1.05);
+  box(0.26, 0.16, 0.26, woodDk, WHEEL.x, WHEEL.y + 0.05, s * 1.05);
+}
+box(0.14, 0.14, 2.1, woodDk, WHEEL.x, WHEEL.y - 0.4, 0);   // stiffener between posts
+// stone pier under the elevated wheel catches the water, then spills to the tailrace
+box(1.8, 1.9, 1.4, rock, WHEEL.x, 0.95, 0);
+box(1.7, 0.06, 1.3, waterMt, WHEEL.x, 1.93, 0);
+{
+  const drip = spanMesh(0.5, 0.04, makeWaterMat(1.8, 0.7));
+  span(drip, new THREE.Vector3(WHEEL.x, 1.9, 0.6), new THREE.Vector3(WHEEL.x, 0.15, 1.55));
+}
+
+/* ---------------- Water supply: hill, dam pond, flume, pour, tailrace ------ */
+{
+  // hill with the dam pond on top
+  const hill = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 18), grassMat);
+  hill.scale.set(9, 10, 7); hill.position.set(23, -0.2, 1.5);
+  hill.castShadow = hill.receiveShadow = true; scene.add(hill);
+  const pond = new THREE.Mesh(new THREE.CircleGeometry(2.3, 24), makeWaterMat(0.15, 0.9));
+  pond.rotation.x = -Math.PI / 2; pond.position.set(22.5, 9.85, 1.5); scene.add(pond);
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(2.3, 0.22, 8, 28), rock); // dam rim
+  rim.rotation.x = Math.PI / 2; rim.position.set(22.5, 9.79, 1.5);
+  rim.castShadow = rim.receiveShadow = true; scene.add(rim);
+  // feed channel from pond to flume intake
+  const feed = spanMesh(0.5, 0.05, makeWaterMat(0.6, 0.85));
+  span(feed, new THREE.Vector3(20.5, 9.83, 1.0), new THREE.Vector3(19.4, 9.64, 0.1));
+  // long elevated flume down to the wheel
+  const flumeAng = Math.atan2(9.62 - 7.6, 19.4 - 11.45);
+  const flumeLen = Math.hypot(19.4 - 11.45, 9.62 - 7.6);
+  const fc = [(19.4 + 11.45) / 2, (9.62 + 7.6) / 2];
+  const fl = new THREE.Group(); scene.add(fl);
+  const fb = (w, h, d, x, y, z, mat = wood) => {
+    const m = box(w, h, d, mat, x, y, z, fl); m.rotation.z = flumeAng; return m;
+  };
+  fb(flumeLen, 0.1, 0.7, fc[0], fc[1], 0);
+  fb(flumeLen, 0.22, 0.08, fc[0], fc[1] + 0.1, 0.36);
+  fb(flumeLen, 0.22, 0.08, fc[0], fc[1] + 0.1, -0.36);
+  fb(flumeLen - 0.1, 0.05, 0.58, fc[0], fc[1] + 0.06, 0, makeWaterMat(1.2, 0.85, true, 'x'));
+  for (const tx of [12.8, 15.4, 18.0]) {                        // trestle posts
+    const ty = 7.6 + (tx - 11.45) * Math.tan(flumeAng) - 0.08;
+    box(0.14, ty, 0.14, woodDk, tx, ty / 2, 0.32);
+    box(0.14, ty, 0.14, woodDk, tx, ty / 2, -0.32);
+    box(0.14, 0.14, 0.85, woodDk, tx, ty - 0.02, 0);
+  }
+  // water pouring off the lip onto the paddles
+  const pour = spanMesh(0.5, 0.04, makeWaterMat(2.5, 0.7));
+  span(pour, new THREE.Vector3(11.5, 7.55, 0), new THREE.Vector3(11.2, 6.85, 0));
+  // tailrace leading the water away
+  box(1.2, 0.04, 17, makeWaterMat(-0.8, 0.85), 11, 0.08, 10.1);
+  box(0.25, 0.3, 17, rock, 10.32, 0.15, 10.1);
+  box(0.25, 0.3, 17, rock, 11.68, 0.15, 10.1);
+}
+// splash where the pour hits the wheel
+const SPL_N = 60;
+const splPos = new Float32Array(SPL_N * 3);
+const splVel = new Array(SPL_N);
+const splLife = new Float32Array(SPL_N);
+const splGeo = new THREE.BufferGeometry();
+splGeo.setAttribute('position', new THREE.BufferAttribute(splPos, 3));
+const splash = new THREE.Points(splGeo, new THREE.PointsMaterial({
+  color: 0xe8f2f6, size: 0.09, transparent: true, opacity: 0.9, depthWrite: false }));
+splash.frustumCulled = false; scene.add(splash);
+function respawnDrop(i) {
+  splPos[i * 3]     = 11.25 + (Math.random() - 0.5) * 0.25;
+  splPos[i * 3 + 1] = 6.95 + Math.random() * 0.15;
+  splPos[i * 3 + 2] = (Math.random() - 0.5) * 0.5;
+  splVel[i] = [(Math.random() - 0.7) * 1.2, 1 + Math.random() * 2, (Math.random() - 0.5) * 1.2];
+  splLife[i] = 0.4 + Math.random() * 0.5;
+}
+for (let i = 0; i < SPL_N; i++) { respawnDrop(i); splLife[i] *= Math.random(); }
+function updateSplash(dt) {
+  for (let i = 0; i < SPL_N; i++) {
+    splLife[i] -= dt;
+    if (splLife[i] <= 0) respawnDrop(i);
+    else {
+      splVel[i][1] -= 9.8 * dt;
+      splPos[i * 3]     += splVel[i][0] * dt;
+      splPos[i * 3 + 1] += splVel[i][1] * dt;
+      splPos[i * 3 + 2] += splVel[i][2] * dt;
+    }
+  }
+  splGeo.attributes.position.needsUpdate = true;
+}
+
+/* ---------------- Flatrod: jointed rod, end eyes, pendulum hangers --------- */
+const flatrod = spanMesh(0.15, 0.09, wood);
+// iron strap couplings joining the timber sections
+const rodStraps = [box(0.24, 0.2, 0.15, iron), box(0.24, 0.2, 0.15, iron)];
+// eyes riding the crank pins at both ends
+const rodEyeWheel = new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.04, 8, 20), iron);
+const rodEyeShaft = rodEyeWheel.clone();
+rodEyeWheel.castShadow = rodEyeShaft.castShadow = true;
+scene.add(rodEyeWheel, rodEyeShaft);
+// pendulum hangers (svänghängsel): arms swinging from tall posts, rod through the eye
+const hangers = [];
+for (const hx of [3.5, 6.5, 9.2]) {
+  const t = hx / 11;
+  const rodMin = 2.68 + t * 1.72;                // lowest the rod gets here (crank arcs)
+  const Lh = 2.2, pivotY = rodMin + Lh;
+  box(0.16, pivotY + 0.12, 0.16, woodDk, hx, (pivotY + 0.12) / 2, -1.6);
+  box(0.26, 0.14, 0.26, woodDk, hx, pivotY + 0.06, -1.6);
+  cyl(0.045, 0.34, iron, hx, pivotY, -1.6, 'z');
+  const arm = spanMesh(0.09, 0.06, woodDk);
+  const eye = new THREE.Mesh(new THREE.TorusGeometry(0.15, 0.04, 8, 20), iron);
+  eye.rotation.y = Math.PI / 2; eye.castShadow = true; scene.add(eye);
+  hangers.push({ hx, pivotY, Lh, arm, eye, lean: 1 });
+}
+
+/* ---------------- Unloading deck at the top -------------------------------- */
+box(3.7, 0.14, 3.0, wood, -3.05, DECK_TOP - 0.07, 0);       // ties into the headframe
+for (const pz of [-1.3, 1.3])
+  box(0.14, DECK_TOP, 0.14, woodDk, -4.7, DECK_TOP / 2, pz);
+box(3.7, 0.1, 0.08, woodDk, -3.05, DECK_TOP + 0.25, -1.46);
+box(3.7, 0.1, 0.08, woodDk, -3.05, DECK_TOP + 0.25, 1.46);
+
+/* ---------------- The ore barrel ------------------------------------------- */
+const barrel = new THREE.Group(); scene.add(barrel);
+const barrelMat = new THREE.MeshStandardMaterial({ color: 0x9c6a33, roughness: .8, transparent: true });
+const hoopMat   = new THREE.MeshStandardMaterial({ color: 0x3a3a3f, roughness: .5, metalness: .5, transparent: true });
+const pinMat    = new THREE.MeshStandardMaterial({ color: 0x777d88, roughness: .35, metalness: .7, transparent: true });
+{
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.29, 0.75, 18), barrelMat);
+  body.castShadow = true; body.position.y = -0.45; barrel.add(body);
+  for (const hy of [-0.2, -0.45, -0.7]) {
+    const hoop = new THREE.Mesh(new THREE.TorusGeometry(hy === -0.7 ? 0.295 : 0.315, 0.022, 8, 24), hoopMat);
+    hoop.rotation.x = Math.PI / 2; hoop.position.y = hy; barrel.add(hoop);
+  }
+  cyl(0.06, 1.9, pinMat, 0, 0, 0, 'z', barrel);                  // trunnion pin (rests on hooks)
+  box(0.06, 0.16, 0.05, pinMat, 0, -0.06, 0.22, barrel);         // straps
+  box(0.06, 0.16, 0.05, pinMat, 0, -0.06, -0.22, barrel);
+  const oreCols = [0x3a3230, 0x4a3b2f, 0x3f5a45];
+  for (let i = 0; i < 4; i++) {
+    const ore = new THREE.Mesh(new THREE.IcosahedronGeometry(0.1 + Math.random() * 0.05, 0),
+      new THREE.MeshStandardMaterial({ color: oreCols[i % 3], roughness: .9, transparent: true }));
+    ore.position.set((Math.random() - .5) * .25, -0.13, (Math.random() - .5) * .25);
+    ore.castShadow = true; barrel.add(ore);
+  }
+}
+const barrelFadeMats = [];
+barrel.traverse(o => { if (o.material) barrelFadeMats.push(o.material); });
+function setBarrelOpacity(v) {
+  for (const m of barrelFadeMats) m.opacity = v;
+  barrel.visible = v > 0.01;
+}
+// gold ring that pulses at the exact hand-over moment
+const hlMat = new THREE.MeshStandardMaterial({
+  color: 0xffc850, emissive: 0xffa020, emissiveIntensity: 1.6, transparent: true, opacity: 0 });
+const hlRing = new THREE.Mesh(new THREE.TorusGeometry(0.55, 0.045, 8, 32), hlMat);
+hlRing.rotation.x = Math.PI / 2;
+hlRing.visible = false;
+barrel.add(hlRing);
+
+/* ---------------- Labels --------------------------------------------------- */
+const labels = [];
+function addLabel(text, pos, parent = scene, cls = 'lbl') {
+  const l = makeLabel(text, cls); l.position.copy(pos); parent.add(l); labels.push(l); return l;
+}
+addLabel('Water wheel', new THREE.Vector3(0, WHEEL.r + 0.6, 0), wheelGroup);
+addLabel('Crank', new THREE.Vector3(WHEEL.crank + 0.4, 0, -1.6), wheelGroup, 'lbl small');
+addLabel('Flatrod (stånggång)', new THREE.Vector3(5.5, 4.9, -1.6), scene);
+addLabel('Crank shaft', new THREE.Vector3(1.0, 3.15, -1.6), scene, 'lbl small');
+const lblA = addLabel('Hook beams — pair A', new THREE.Vector3(-1.0, 2.6, 0), beamsA);
+const lblB = addLabel('Hook beams — pair B', new THREE.Vector3(1.2, 1.6, 0), beamsB);
+lblA.element.style.color = '#f0b46a'; lblA.element.style.borderColor = '#f0b46a';
+lblB.element.style.color = '#ff7a5c'; lblB.element.style.borderColor = '#ff7a5c';
+addLabel('Ore barrel', new THREE.Vector3(0.75, 0.2, 0), barrel, 'lbl small');
+addLabel('Unload deck', new THREE.Vector3(-3.05, DECK_TOP + 0.5, 0), scene, 'lbl small');
+addLabel('Mine shaft (open cut)', new THREE.Vector3(1.4, 0.4, 2.6), scene, 'lbl small');
+addLabel('Loading gallery', new THREE.Vector3(0, -8.1, -5.5), scene, 'lbl small');
+addLabel('Dam pond', new THREE.Vector3(22.5, 10.4, 1.5), scene, 'lbl small');
+addLabel('Flume', new THREE.Vector3(15.4, 9.3, 0), scene, 'lbl small');
+
+/* ---------------- Animation state ------------------------------------------ */
+let theta = 0, gamma = 0, gammaU = 0;
+let level = 0;                 // index 0..NLEV-1 → hook level L_MIN+level; then 3 unload half-strokes
+let lastDir = 0, prevA = attach(0), aAatFlip = attach(0), gammaAtFlip = 0, timeAtFlip = 0;
+let simTime = 0, speed = 1, paused = false;
+
+const statusEl = document.getElementById('status');
+const stepEl = document.getElementById('step');
+const easeIO = t => t < .5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+const clamp01 = t => Math.min(1, Math.max(0, t));
+
+const p1 = new THREE.Vector3(), p2 = new THREE.Vector3();
+const p3 = new THREE.Vector3(), p4 = new THREE.Vector3();
+
+function update(dt) {
+  simTime += dt;
+  for (const m of waterMats) {
+    if (m.userData.axis === 'x') m.map.offset.x += dt * m.userData.speed;
+    else m.map.offset.y -= dt * m.userData.speed;
+  }
+  updateSplash(dt);
+
+  theta += OMEGA * dt;
+  // parallelogram linkage: driven crank follows the wheel exactly
+  const gNew = theta;
+  let dg = gNew - gamma;
+  dg -= 2 * Math.PI * Math.round(dg / (2 * Math.PI));
+  gammaU += dg; gamma = gNew;
+
+  const aA = attach(gamma), aB = attach(gamma + Math.PI);
+
+  // Detect stroke extremes on pair A → hand the barrel to the other pair.
+  const dA = aA - prevA; prevA = aA;
+  const dir = Math.sign(dA);
+  if (lastDir === 0) lastDir = dir || 1;      // adopt initial direction, no flip
+  else if (dir !== 0 && dir !== lastDir && Math.abs(aA - aAatFlip) > 1e-3) {
+    lastDir = dir; aAatFlip = aA;
+    level = (level + 1) % (NLEV + 3);       // 11 carries + 3 unload half-strokes
+    // Only (re)start the unload clock when entering a carry level or the
+    // first unload half — NOT at the mid-unload extremes, or the barrel
+    // would pop back to the top and unload twice.
+    if (level <= NLEV) { gammaAtFlip = gammaU; timeAtFlip = simTime; }
+  }
+
+  // --- wheel, shaft, rods ---
+  wheelGroup.rotation.z = theta;
+  shaftGroup.rotation.z = gamma;
+  p1.set(WHEEL.x + WHEEL.crank * Math.cos(theta), WHEEL.y + WHEEL.crank * Math.sin(theta), -1.6);
+  p2.set(SHAFT.x + SHAFT.crankD * Math.cos(gamma), SHAFT.y + SHAFT.crankD * Math.sin(gamma), -1.6);
+  span(flatrod, p1, p2);
+  // flatrod details: straps, end eyes, swinging hangers
+  for (let i = 0; i < 2; i++) {
+    rodStraps[i].position.lerpVectors(p2, p1, (i + 1) / 3);
+    rodStraps[i].quaternion.copy(flatrod.quaternion);
+  }
+  rodEyeWheel.position.copy(p1);
+  rodEyeShaft.position.copy(p2);
+  const rodYat = x => p2.y + (x - p2.x) * (p1.y - p2.y) / (p1.x - p2.x);
+  for (const h of hangers) {
+    let ry = rodYat(h.hx), sMag = 0, ex = h.hx;
+    for (let it = 0; it < 2; it++) {                 // settle eye onto the rod line
+      const c = Math.min(1, Math.max(-1, (h.pivotY - ry) / h.Lh));
+      sMag = Math.acos(c);
+      if (sMag < 0.06) h.lean = Math.sign(Math.sin(theta)) || h.lean;
+      ex = h.hx + h.lean * h.Lh * Math.sin(sMag);
+      ry = rodYat(ex);
+    }
+    const ey = h.pivotY - h.Lh * Math.cos(h.lean * sMag);
+    p3.set(h.hx, h.pivotY, -1.6);
+    p4.set(ex, ey, -1.6);
+    span(h.arm, p3, p4);
+    h.eye.position.copy(p4);
+  }
+  beamsA.position.y = aA - CROSS;        // group origin = hook level 0
+  beamsB.position.y = aB - CROSS;
+  for (let i = 0; i < 2; i++) {
+    const s = i === 0 ? 1 : -1;
+    span(rodsA[i],
+      new THREE.Vector3(SHAFT.crankB * Math.cos(gamma), SHAFT.y + SHAFT.crankB * Math.sin(gamma), s * 1.15),
+      new THREE.Vector3(0, aA, s * 1.15));
+    span(rodsB[i],
+      new THREE.Vector3(-SHAFT.crankB * Math.cos(gamma), SHAFT.y - SHAFT.crankB * Math.sin(gamma), s * 1.30),
+      new THREE.Vector3(0, aB, s * 1.30));
+  }
+
+  // --- barrel ---
+  let status;
+  if (level < NLEV) {
+    const L = L_MIN + level;
+    const carrierA = L % 2 === 0;
+    const y = (carrierA ? aA : aB) - CROSS + L;
+    barrel.position.set(0, y, 0);
+    barrel.rotation.z = 0;
+    setBarrelOpacity(1);
+    const tw = simTime - timeAtFlip;              // pulse the ring at hand-over
+    hlMat.opacity = tw < 1.2 ? Math.sin(Math.min(tw / 1.2, 1) * Math.PI) * 0.95 : 0;
+    hlRing.visible = hlMat.opacity > 0.02;
+    const pair = carrierA
+      ? '<span style="color:#f0b46a">A</span>'
+      : '<span style="color:#ff7a5c">B</span>';
+    if (simTime - timeAtFlip < 1.2 && simTime > 0.5)
+      status = `⚡ Hand-over! Pair ${pair}'s next hook takes the barrel — one step higher.`;
+    else if (L < 0)
+      status = `Pair ${pair} rises — hoisting the barrel up the shaft (level ${L}).`;
+    else
+      status = `Pair ${pair} rises — the barrel climbs the headframe above ground.`;
+    stepEl.textContent = `Step ${level + 1} of ${NLEV} — one hook spacing per half-stroke, from the gallery to the deck.`;
+  } else {
+    // three half-strokes for unload + return (restores pair parity at the bottom)
+    const u = Math.abs(gammaU - gammaAtFlip) / Math.PI;   // 0 … 3
+    hlRing.visible = false; hlMat.opacity = 0;
+    status = 'At the top the barrel is tipped onto the deck — the next one is being hooked on below.';
+    stepEl.textContent = 'Unload & reload — the cycle repeats for the next barrel.';
+    if (u < 0.15) {                                        // settle at the top
+      barrel.position.set(0, TOP_Y, 0); barrel.rotation.z = 0; setBarrelOpacity(1);
+    } else if (u < 0.4) {                                  // tip over onto the deck
+      const t = easeIO((u - 0.15) / 0.25);
+      barrel.position.set(-1.0 * t, TOP_Y, 0);
+      barrel.rotation.z = 1.45 * t;
+      setBarrelOpacity(1);
+    } else if (u < 0.7) {                                  // roll along the deck
+      const t = easeIO((u - 0.4) / 0.3);
+      barrel.position.set(-1.0 - 1.2 * t, TOP_Y, 0);
+      barrel.rotation.z = 1.45 + 3.6 * t;
+      setBarrelOpacity(1);
+    } else if (u < 1.0) {                                  // fade out
+      setBarrelOpacity(1 - (u - 0.7) / 0.3);
+    } else if (u < 2.45) {                                 // gone (empty barrel went back down)
+      setBarrelOpacity(0);
+    } else if (u < 2.8) {                                  // next barrel appears at the bottom
+      const t = clamp01((u - 2.45) / 0.35);
+      barrel.position.set(0, BOT_Y, 0); barrel.rotation.z = 0;
+      setBarrelOpacity(t);
+    } else {                                               // waiting for pair A's lowest hook
+      barrel.position.set(0, BOT_Y, 0); barrel.rotation.z = 0;
+      setBarrelOpacity(1);
+    }
+  }
+  statusEl.innerHTML = status;
+}
+
+/* ---------------- UI -------------------------------------------------------- */
+const infoPanel = document.getElementById('infoPanel');
+const btnInfo = document.getElementById('btnInfo');
+document.getElementById('btnClose').onclick = () => {
+  infoPanel.style.display = 'none';
+  btnInfo.style.display = 'block';
+};
+btnInfo.onclick = () => {
+  infoPanel.style.display = 'block';
+  btnInfo.style.display = 'none';
+};
+const btnPause = document.getElementById('btnPause');
+btnPause.onclick = () => {
+  paused = !paused;
+  btnPause.textContent = paused ? '▶ Play' : '⏸ Pause';
+};
+document.getElementById('speed').oninput = e => speed = parseFloat(e.target.value);
+document.getElementById('chkLabels').onchange = e => {
+  for (const l of labels) l.visible = e.target.checked;
+};
+const chkXray = document.getElementById('chkXray');
+chkXray.onchange = () => {
+  const on = chkXray.checked;
+  grassMat.transparent = on;
+  grassMat.opacity = on ? 0.15 : 1;
+  grassMat.depthWrite = !on;
+  grassMat.needsUpdate = true;
+  rockGlass.opacity = on ? 0.06 : 0.22;
+  pitFloorMat.transparent = on;
+  pitFloorMat.opacity = on ? 0.15 : 1;
+  pitFloorMat.depthWrite = !on;
+  pitFloorMat.needsUpdate = true;
+};
+const views = {
+  overview: [[13.5, 7.5, 13.5], [4.5, 3.6, 0]],
+  mine:     [[3.6, -3.2, 3.6],  [-0.3, -7.2, -1.0]],
+  tower:    [[5.0, 3.5, 8.5],   [0, 2.2, 0]],
+  wheel:    [[15.5, 7, 8],      [10.5, 5, 0]],
+  water:    [[28, 12, 14],      [14, 6, 0]],
+};
+document.querySelectorAll('.view').forEach(b => b.onclick = () => {
+  const [pos, tgt] = views[b.dataset.v];
+  camera.position.set(...pos); controls.target.set(...tgt);
+});
+
+/* ---------------- Main loop ------------------------------------------------- */
+// Optional ?t=<seconds> fast-forward and ?view=<name> (testing/sharing a state)
+const params = new URLSearchParams(location.search);
+const t0 = parseFloat(params.get('t'));
+if (t0 > 0) for (let i = 0; i < t0 * 60; i++) update(1 / 60);
+const v0 = views[params.get('view')];
+if (v0) { camera.position.set(...v0[0]); controls.target.set(...v0[1]); }
+const camP = (params.get('cam') || '').split(',').map(Number);
+const tgtP = (params.get('tgt') || '').split(',').map(Number);
+if (camP.length === 3 && camP.every(Number.isFinite)) camera.position.set(...camP);
+if (tgtP.length === 3 && tgtP.every(Number.isFinite)) controls.target.set(...tgtP);
+if (params.get('xray')) { chkXray.checked = true; chkXray.onchange(); }
+
+const clock = new THREE.Clock();
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.05) * (paused ? 0 : speed);
+  if (dt > 0) update(dt);
+  controls.update();
+  renderer.render(scene, camera);
+  labelRenderer.render(scene, camera);
+}
+animate();
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  labelRenderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>

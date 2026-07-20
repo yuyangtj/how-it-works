@@ -81,6 +81,7 @@
   <button class="view" data-v="tower">Hoist tower</button>
   <button class="view" data-v="wheel">Water wheel</button>
   <button class="view" data-v="water">Water supply</button>
+  <button id="btnVideo" title="Play the scripted camera tour and record it to a .webm file">🎬 Record video</button>
 </div>
 
 <script type="importmap">
@@ -90,6 +91,7 @@
 } }
 </script>
 
+<script src="../video-tour.js"></script>
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -1034,6 +1036,46 @@ document.querySelectorAll('.view').forEach(b => b.onclick = () => {
   camera.position.set(...pos); controls.target.set(...tgt);
 });
 
+/* ---------------- Scripted video tour (shared recorder: ../video-tour.js) --- */
+// Storyboard for the "how it works" video: follows the power chain. Scene
+// boundaries match the timecodes in VIDEO-NARRATION.md (the Gemini TTS script).
+const SCENES = [
+  // dur (wall-clock s), camera from→to [position, target], sim speed, x-ray
+  { dur: 12, from: [[17.5, 9.5, 17.5], [4.5, 3.6, 0]],    to: [[13.5, 7.5, 13.5], [4.5, 3.6, 0]],  speed: 1 },
+  { dur: 14, from: [[28, 12, 14], [14, 6, 0]],            to: [[19.5, 10.5, 5.5], [16.5, 8.6, 0.4]], speed: 1 },
+  { dur: 16, from: [[15.5, 7, 8], [10.5, 5, 0]],          to: [[14.5, 5.5, -7], [10.8, 4.8, 0]],   speed: 1 },
+  { dur: 16, from: [[10, 6.4, -4.5], [9.5, 5.6, -1.6]],   to: [[2.5, 6.4, -4.5], [2, 5.8, -1.6]], speed: 1 },
+  { dur: 14, from: [[4.5, 8, 6.5], [0, 6.3, 0]],          to: [[3.5, 7.3, 4.6], [0, 6.2, 0]],      speed: 1 },
+  { dur: 16, from: [[5, 0.5, 5], [0, -2, 0]],             to: [[3.6, -3.2, 3.6], [-0.3, -7.2, -1.0]], speed: 1, xray: true },
+  { dur: 30, from: [[9, -8, 9], [0, -6, 0]],              to: [[9, 8, 9], [0, 4.5, 0]],            speed: 0.5, xray: true },
+  { dur: 16, from: [[6, 5.5, 9], [0, 3.2, 0]],            to: [[5, 5, 7.5], [0, 3.6, 0]],          speed: 1 },
+  { dur: 12, from: [[8, 6, 10], [3, 3, 0]],               to: [[13.5, 7.5, 13.5], [4.5, 3.6, 0]],  speed: 1 },
+];
+VideoTour.init({
+  THREE, renderer, camera, controls,
+  scenes: SCENES,
+  labels,
+  filename: 'hakspelet.webm',
+  button: document.getElementById('btnVideo'),
+  labelsVisible: () => document.getElementById('chkLabels').checked,
+  onScene(sc) {
+    speed = sc.speed ?? 1;
+    document.getElementById('speed').value = speed;
+    const xr = !!sc.xray;
+    if (chkXray.checked !== xr) { chkXray.checked = xr; chkXray.onchange(); }
+  },
+  onStart() {
+    infoPanel.style.display = 'none';
+    btnInfo.style.display = 'none';
+    document.getElementById('bar').style.visibility = 'hidden';
+    paused = false; btnPause.textContent = '⏸ Pause';
+  },
+  onStop() {
+    document.getElementById('bar').style.visibility = '';
+    infoPanel.style.display = 'block';
+  },
+});
+
 /* ---------------- Main loop ------------------------------------------------- */
 // Optional ?t=<seconds> fast-forward and ?view=<name> (testing/sharing a state)
 const params = new URLSearchParams(location.search);
@@ -1046,15 +1088,19 @@ const tgtP = (params.get('tgt') || '').split(',').map(Number);
 if (camP.length === 3 && camP.every(Number.isFinite)) camera.position.set(...camP);
 if (tgtP.length === 3 && tgtP.every(Number.isFinite)) controls.target.set(...tgtP);
 if (params.get('xray')) { chkXray.checked = true; chkXray.onchange(); }
+// (?tour=1 / ?record=1 are handled by VideoTour.init above)
 
 const clock = new THREE.Clock();
 function animate() {
   requestAnimationFrame(animate);
-  const dt = Math.min(clock.getDelta(), 0.05) * (paused ? 0 : speed);
+  const rawDt = Math.min(clock.getDelta(), 0.05);
+  VideoTour.tick();
+  const dt = rawDt * (paused ? 0 : speed);
   if (dt > 0) update(dt);
   controls.update();
   renderer.render(scene, camera);
   labelRenderer.render(scene, camera);
+  VideoTour.composite();
 }
 animate();
 

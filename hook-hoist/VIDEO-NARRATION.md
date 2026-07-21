@@ -83,3 +83,15 @@ Outputs land in `hook-hoist/voiceover/` (`01.wav`…`09.wav`, `voice.wav`)
 plus `hakspelet-narrated.mp4`. Clips are cached; pass `--force` after
 editing a scene's text. If the log warns a clip runs longer than its scene,
 trim that scene's prose rather than speeding up the voice.
+
+## Publishing to YouTube
+
+```bash
+YT_CLIENT_ID=… YT_CLIENT_SECRET=… node tools/upload-youtube.mjs \
+  hook-hoist/hakspelet-narrated.mp4 \
+  --title "Polhem's Hook Hoist (Hakspelet) — How It Works"
+```
+
+Uploads unlisted by default; the description links the live demo
+(`https://yuyangtj.github.io/how-it-works/hook-hoist/`) and the repo.
+See the header of `tools/upload-youtube.mjs` for the one-time OAuth setup.

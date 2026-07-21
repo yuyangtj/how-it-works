@@ -137,3 +137,21 @@ Watch the per-scene log: a `⚠ Ns over` warning means the spoken clip runs
 longer than its scene — trim the narration text (preferred) or lengthen the
 scene's `dur` and re-record. Clips shorter than the scene are fine; the gap
 is silence. Listen to `voice.wav` before shipping the mp4.
+
+## Publish to YouTube
+
+```bash
+YT_CLIENT_ID=… YT_CLIENT_SECRET=… node tools/upload-youtube.mjs \
+  <topic>/<topic>-narrated.mp4 --title "…" [--privacy unlisted] [--tags "a,b"]
+```
+
+`tools/upload-youtube.mjs` uploads via the YouTube Data API (resumable, with
+retry) and builds the description automatically: scene 1's narration text as
+the lead paragraph (`--desc-file` overrides), a link to the live GitHub Pages
+demo `https://yuyangtj.github.io/how-it-works/<topic>/`, and the repo URL.
+Default privacy is unlisted, category Education. One-time setup lives in the
+header comment of the script (Google Cloud OAuth "Desktop app" client with
+YouTube Data API v3; first run opens a browser consent page and caches the
+refresh token in `~/.config/how-it-works/youtube-oauth.json`). Note: until
+the OAuth app is verified by Google, YouTube may force uploads to private —
+the script prints the applied privacy; flip it in YouTube Studio if needed.

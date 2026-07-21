@@ -37,8 +37,20 @@ voiced with Gemini TTS and muxed in.
   regardless of how slowly headless software GL renders. This is the preferred
   path for final takes too; the in-page 🎬 button records in real time via
   MediaRecorder and depends on the machine's live frame rate.
+- `tools/generate-voiceover.mjs` — automated Gemini TTS voice-over. Parses
+  `VIDEO-NARRATION.md`, synthesizes one clip per scene, aligns each clip to
+  its scene's start timecode, and optionally muxes with the video:
+  ```bash
+  GEMINI_TTS_API_KEY=... node tools/generate-voiceover.mjs \
+    <topic>/VIDEO-NARRATION.md --video <topic>.webm
+  ```
+  Options: `--voice` (default Algenib), `--model` (default
+  gemini-2.5-flash-preview-tts), `--out dir` (default `<topic>/voiceover/`),
+  `--force` (re-synthesize; clips are cached otherwise). Requires `ffmpeg`.
 - `<topic>/VIDEO-NARRATION.md` — voice-over script per topic, one block per
-  scene with exact timecodes matching the tour.
+  scene with exact timecodes matching the tour. Blocks must follow the exact
+  header format `## Scene N — M:SS–M:SS — title` with `>`-quoted prose —
+  the voice-over tool parses this.
 
 ## Adding video support to a new topic page
 
@@ -112,11 +124,16 @@ voiced with Gemini TTS and muxed in.
 
 ## Voice-over + final assembly
 
-1. Generate one Gemini TTS clip per scene from `VIDEO-NARRATION.md`
-   (strip headers/quotes), name `01.wav`…`NN.wav`.
-2. Concatenate, then mux (video is exactly the tour length; `-shortest`
-   trims the longer stream):
-   ```bash
-   ffmpeg -i 01.wav -i 02.wav -filter_complex "concat=n=2:v=0:a=1" voice.wav
-   ffmpeg -i <topic>.webm -i voice.wav -c:v copy -c:a aac -shortest <topic>-narrated.mp4
-   ```
+One command (needs `GEMINI_TTS_API_KEY` in the environment):
+```bash
+GEMINI_TTS_API_KEY=... node tools/generate-voiceover.mjs \
+  <topic>/VIDEO-NARRATION.md --video <topic>.webm
+```
+This writes `<topic>/voiceover/01.wav…NN.wav` (cached — pass `--force` after
+editing the narration), a timeline-aligned `voice.wav` (each clip starts at
+its scene's timecode, not naively concatenated), and `<topic>-narrated.mp4`.
+
+Watch the per-scene log: a `⚠ Ns over` warning means the spoken clip runs
+longer than its scene — trim the narration text (preferred) or lengthen the
+scene's `dur` and re-record. Clips shorter than the scene are fine; the gap
+is silence. Listen to `voice.wav` before shipping the mp4.

@@ -12,9 +12,9 @@ scene. If a clip runs long, trim a sentence rather than speeding up the voice.
 
 ## Scene 1 — 0:00–0:12 — Title / overview
 
-> Around the year 1700, at the Falun copper mine in Sweden, engineer
-> Christopher Polhem built a remarkable hoisting machine: the Hakspelet, or
-> hook hoist. This is how it worked.
+> Around 1700, at the Falun copper mine in Sweden, Christopher Polhem built
+> a remarkable hoisting machine: the Hakspelet, or hook hoist. This is how
+> it worked.
 
 ## Scene 2 — 0:12–0:26 — Dam pond and flume
 
@@ -24,9 +24,9 @@ scene. If a clip runs long, trim a sentence rather than speeding up the voice.
 
 ## Scene 3 — 0:26–0:42 — Water wheel and crank
 
-> The wheel is overshot: water fills the buckets near the top, and its weight
-> turns the wheel. On the axle sits a crank. Every revolution of the wheel
-> becomes one long push-and-pull stroke — the heartbeat of the whole machine.
+> Water fills the buckets near the top, and its weight turns the wheel. On
+> the axle sits a crank, turning each revolution into one long push-and-pull
+> stroke — the machine's heartbeat.
 
 ## Scene 4 — 0:42–0:58 — Flatrod and pendulum hangers
 
@@ -38,9 +38,8 @@ scene. If a clip runs long, trim a sentence rather than speeding up the voice.
 ## Scene 5 — 0:58–1:12 — Rocking beam, beams in counter-phase
 
 > At the headframe, the flatrod drives a rocking beam — the vippbom. From its
-> opposite arms, the two pairs of hooked timber beams hang on chains,
-> counterbalancing each other: when one pair rises, the other falls. Watch
-> them trade places.
+> arms hang two pairs of hooked beams: when one pair rises, the other falls.
+> Watch them trade places.
 
 ## Scene 6 — 1:12–1:28 — Mine shaft and loading gallery
 
@@ -65,30 +64,22 @@ scene. If a clip runs long, trim a sentence rather than speeding up the voice.
 
 ## Scene 9 — 2:14–2:26 — Wrap-up overview
 
-> Pond, flume, wheel, flatrod, rocking beam, and hooks — one continuous chain
-> of water power, lifting ore from deep underground. Polhem's hook hoist,
-> three hundred years ahead of its time.
+> Pond, flume, wheel, flatrod, and hooks — one chain of water power. Polhem's
+> hook hoist, three centuries ahead of its time.
 
 ---
 
 ## Turning this into audio with Gemini TTS
 
-1. Generate one clip per scene (9 clips). Plain prose only — strip the
-   `Scene …` headers, `>` quotes, and this section before pasting.
-2. Name the clips `01.wav` … `09.wav` and concatenate with silence trimmed:
+Automated — parses the scene blocks above, synthesizes one clip per scene,
+aligns each clip to its scene start, and muxes:
 
-   ```bash
-   ffmpeg -i 01.wav -i 02.wav -i 03.wav -i 04.wav -i 05.wav -i 06.wav \
-          -i 07.wav -i 08.wav -i 09.wav \
-          -filter_complex "concat=n=9:v=0:a=1" voice.wav
-   ```
+```bash
+GEMINI_TTS_API_KEY=... node tools/generate-voiceover.mjs \
+  hook-hoist/VIDEO-NARRATION.md --video hakspelet.webm
+```
 
-3. Mux voice-over with the recorded video:
-
-   ```bash
-   ffmpeg -i hakspelet.webm -i voice.wav -c:v copy -c:a aac -shortest \
-          hakspelet-narrated.mp4
-   ```
-
-   (`-shortest` cuts whichever stream runs long; the video is exactly
-   146 s, so trim the audio to fit if needed.)
+Outputs land in `hook-hoist/voiceover/` (`01.wav`…`09.wav`, `voice.wav`)
+plus `hakspelet-narrated.mp4`. Clips are cached; pass `--force` after
+editing a scene's text. If the log warns a clip runs longer than its scene,
+trim that scene's prose rather than speeding up the voice.

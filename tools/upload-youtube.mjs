@@ -28,12 +28,13 @@ const opt = (name, dflt) => {
   const i = args.indexOf('--' + name);
   return i >= 0 ? args[i + 1] : dflt;
 };
-const OPTS = ['--title', '--topic', '--privacy', '--tags', '--desc-file'];
+const OPTS = ['--title', '--topic', '--privacy', '--tags', '--desc-file', '--update'];
 const positional = args.filter((a, i) => !a.startsWith('--') && !OPTS.includes(args[i - 1]));
 
+const UPDATE_ID = opt('update', null);   // update an existing video's metadata instead of uploading
 const video = positional[0];
 const topic = opt('topic', video ? path.basename(path.dirname(path.resolve(video))) : null);
-if (!video || !fs.existsSync(video)) {
+if (!UPDATE_ID && (!video || !fs.existsSync(video))) {
   console.error('Usage: node tools/upload-youtube.mjs <video.mp4> --title "…" [--topic dir] [--privacy unlisted] [--tags "a,b"] [--desc-file f]');
   process.exit(2);
 }
@@ -107,7 +108,7 @@ async function authorize() {
       const redirect = `http://127.0.0.1:${server.address().port}`;
       const url = 'https://accounts.google.com/o/oauth2/v2/auth?' + new URLSearchParams({
         client_id: CLIENT_ID, redirect_uri: redirect, response_type: 'code',
-        scope: 'https://www.googleapis.com/auth/youtube.upload',
+        scope: 'https://www.googleapis.com/auth/youtube.force-ssl',
         access_type: 'offline', prompt: 'consent',
       });
       global.__redirect = redirect;
@@ -177,6 +178,19 @@ async function upload(accessToken) {
 }
 
 const token = await authorize();
+if (UPDATE_ID) {
+  const res = await fetch('https://www.googleapis.com/youtube/v3/videos?part=snippet', {
+    method: 'PUT',
+    headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      id: UPDATE_ID,
+      snippet: { title: TITLE, description, tags: TAGS, categoryId: '27' },
+    }),
+  });
+  if (!res.ok) { console.error(`update HTTP ${res.status}: ${await res.text()}`); process.exit(1); }
+  console.log(`Updated https://youtu.be/${UPDATE_ID}\n\nDescription now:\n` + description);
+  process.exit(0);
+}
 const result = await upload(token);
 console.log('\nUploaded: https://youtu.be/' + result.id);
 console.log('Privacy:  ' + result.status.privacyStatus +

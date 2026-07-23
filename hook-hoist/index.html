@@ -188,7 +188,9 @@ su.sunPosition.value.set(12, 18, 9).normalize();
 }
 scene.add(sky);
 
-const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 600);
+// near=0.5 concentrates depth-buffer precision where the model lives —
+// coplanar timber faces z-fight visibly at near=0.1
+const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.5, 600);
 camera.position.set(13.5, 7.5, 13.5);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.target.set(4.5, 3.6, 0);
@@ -200,6 +202,8 @@ const sun = new THREE.DirectionalLight(0xfff2dd, 2.0);
 sun.position.set(12, 18, 9);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.bias = -0.0004;          // kill shadow-acne speckle on flat timber
+sun.shadow.normalBias = 0.02;
 Object.assign(sun.shadow.camera, { left: -8, right: 18, top: 14, bottom: -11, near: 2, far: 45 });
 scene.add(sun);
 // lantern light in the loading gallery
@@ -499,8 +503,10 @@ function makeBeamPair(xPair, hookLevels, beamMat, topLocal, yokeLocal, fingerZ, 
       cyl(0.028, 0.18, iron, 0, 0, s * fingerZ, 'z', piv);                   // hinge pin
     }
   }
-  box(0.12, 0.14, 1.44, woodDk, xPair, yokeLocal, 0, grp);       // chain yoke
-  box(0.14, 0.12, 1.44, woodDk, xPair, -9.95, 0, grp);           // bottom tie
+  // yoke/tie ends sit proud of the beam faces (±0.78 vs ±0.72) — flush ends
+  // z-fight with the beam timber
+  box(0.12, 0.14, 1.56, woodDk, xPair, yokeLocal, 0, grp);       // chain yoke
+  box(0.14, 0.12, 1.56, woodDk, xPair, -9.95, 0, grp);           // bottom tie
   for (const s of [-1, 1])
     cyl(0.035, 0.12, iron, xPair, yokeLocal + 0.07, s * CH_Z, 'z', grp);
   scene.add(grp);
@@ -581,7 +587,9 @@ scene.add(wheelGroup);
                   Math.sin(a) * (WHEEL.r - 0.18), 0, wheelGroup);
     p.rotation.z = a + Math.PI / 2;
   }
-  cyl(0.13, 3.2, woodDk, 0, 0, -0.1, 'z', wheelGroup);           // axle
+  // axle ends flush with the crank hub (z=-1.47): the flatrod runs in the
+  // z=-1.6 plane and must clear the axle end when the crank is on the far side
+  cyl(0.13, 2.96, woodDk, 0, 0, 0.02, 'z', wheelGroup);          // axle
   cyl(0.24, 0.5, woodDk, 0, 0, 0, 'z', wheelGroup);              // hub
   // crank sits outboard of the z=-1.05 support post, on the axle overhang,
   // so the pin sweeps clear of the post and its bearing
@@ -723,9 +731,11 @@ for (const hx of [3.5, 6.5, 9.2]) {
   const rodMin = (ROCK.y - ROCK.drive) -                   // lowest the rod gets here
     (ROCK.y - ROCK.drive - (WHEEL.y - WHEEL.crank)) * t;
   const Lh = 2.2, pivotY = rodMin + Lh;
-  box(0.16, pivotY + 0.12, 0.16, woodDk, hx, (pivotY + 0.12) / 2, -1.6);
-  box(0.26, 0.14, 0.26, woodDk, hx, pivotY + 0.06, -1.6);
-  cyl(0.045, 0.34, iron, hx, pivotY, -1.6, 'z');
+  // the post stands beside the rod plane (z=-1.95, rod runs at z=-1.6);
+  // the pivot pin cantilevers out of it and the arm swings on the overhang
+  box(0.16, pivotY + 0.12, 0.16, woodDk, hx, (pivotY + 0.12) / 2, -1.95);
+  box(0.26, 0.14, 0.26, woodDk, hx, pivotY + 0.06, -1.95);
+  cyl(0.045, 0.8, iron, hx, pivotY, -1.85, 'z');
   const arm = spanMesh(0.09, 0.06, woodDk);
   const eye = new THREE.Mesh(new THREE.TorusGeometry(0.15, 0.04, 8, 20), iron);
   eye.rotation.y = Math.PI / 2; eye.castShadow = true; scene.add(eye);
@@ -875,8 +885,10 @@ function update(dt) {
   // --- wheel, rocker, flatrod ---
   wheelGroup.rotation.z = theta;
   rockGroup.rotation.z = phi;
-  p1.set(WHEEL.x + WHEEL.crank * Math.cos(theta), WHEEL.y + WHEEL.crank * Math.sin(theta), -1.6);
-  p2.set(ROCK.drive * Math.sin(phi), ROCK.y - ROCK.drive * Math.cos(phi), -1.6);
+  // rod plane z=-1.63: clear of the headframe corner posts (face -1.54) and
+  // the rocker bearing posts (face -1.515); drive-arm and crank pins span it
+  p1.set(WHEEL.x + WHEEL.crank * Math.cos(theta), WHEEL.y + WHEEL.crank * Math.sin(theta), -1.63);
+  p2.set(ROCK.drive * Math.sin(phi), ROCK.y - ROCK.drive * Math.cos(phi), -1.63);
   span(flatrod, p1, p2);
   // flatrod details: straps, end eyes, swinging hangers
   for (let i = 0; i < 2; i++) {
@@ -896,8 +908,8 @@ function update(dt) {
       ry = rodYat(ex);
     }
     const ey = h.pivotY - h.Lh * Math.cos(h.lean * sMag);
-    p3.set(h.hx, h.pivotY, -1.6);
-    p4.set(ex, ey, -1.6);
+    p3.set(h.hx, h.pivotY, -1.63);
+    p4.set(ex, ey, -1.63);
     span(h.arm, p3, p4);
     h.eye.position.copy(p4);
   }

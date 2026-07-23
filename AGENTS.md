@@ -31,7 +31,7 @@ Load that skill before touching the video tooling.
   `~/.config/how-it-works/youtube-oauth.json`, scope youtube.force-ssl).
   Non-interactive shells don't inherit them — pull in with
   `eval "$(grep '^export GEMINI_TTS_API_KEY' ~/.zshrc)"` etc.
-- Published: hook-hoist → https://youtu.be/wiVErnzYvco (unlisted). Use
+- Published: hook-hoist → https://youtu.be/5C3ChSinMds (public). Use
   `tools/upload-youtube.mjs --update <id>` to edit its metadata in place;
   the description source of truth is `<topic>/youtube-description.md`.
 

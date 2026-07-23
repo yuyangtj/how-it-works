@@ -11,7 +11,7 @@ into a narrated explainer video and publishes it to YouTube, end to end.
 - [`hook-hoist/`](hook-hoist/) — **Hakspelet**, Christopher Polhem's
   c. 1700 hook hoist for raising ore barrels from the Falun copper mine.
   [Live demo](https://yuyangtj.github.io/how-it-works/hook-hoist/) ·
-  [narrated video](https://youtu.be/wiVErnzYvco) · see its README for
+  [narrated video](https://youtu.be/5C3ChSinMds) · see its README for
   controls and model notes.
 
 ## Run locally

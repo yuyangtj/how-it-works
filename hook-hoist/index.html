@@ -586,8 +586,9 @@ scene.add(wheelGroup);
   // crank sits outboard of the z=-1.05 support post, on the axle overhang,
   // so the pin sweeps clear of the post and its bearing
   cyl(0.2, 0.24, woodDk, 0, 0, -1.35, 'z', wheelGroup);          // crank hub on the axle
-  const web = box(0.14, WHEEL.crank, 0.12, woodDk, 0, 0, -1.35, wheelGroup);
-  web.geometry.translate(0, 0.5, 0);
+  const web = box(0.14, WHEEL.crank + 0.15, 0.12, woodDk, 0, 0, -1.35, wheelGroup);
+  web.geometry.translate(0, (WHEEL.crank + 0.15) / 2 - 0.05, 0);
+  web.rotation.z = -Math.PI / 2;      // arm points along +x, where the pin sits
   cyl(0.055, 0.5, iron, WHEEL.crank, 0, -1.5, 'z', wheelGroup);  // crank pin
 }
 for (const s of [-1, 1]) {

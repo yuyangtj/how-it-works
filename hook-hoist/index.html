@@ -581,11 +581,14 @@ scene.add(wheelGroup);
                   Math.sin(a) * (WHEEL.r - 0.18), 0, wheelGroup);
     p.rotation.z = a + Math.PI / 2;
   }
-  cyl(0.13, 3.0, woodDk, 0, 0, 0, 'z', wheelGroup);              // axle
+  cyl(0.13, 3.2, woodDk, 0, 0, -0.1, 'z', wheelGroup);           // axle
   cyl(0.24, 0.5, woodDk, 0, 0, 0, 'z', wheelGroup);              // hub
-  const web = box(0.09, WHEEL.crank, 0.07, woodDk, 0, 0, -0.36, wheelGroup);
+  // crank sits outboard of the z=-1.05 support post, on the axle overhang,
+  // so the pin sweeps clear of the post and its bearing
+  cyl(0.2, 0.24, woodDk, 0, 0, -1.35, 'z', wheelGroup);          // crank hub on the axle
+  const web = box(0.14, WHEEL.crank, 0.12, woodDk, 0, 0, -1.35, wheelGroup);
   web.geometry.translate(0, 0.5, 0);
-  cyl(0.055, 1.45, iron, WHEEL.crank, 0, -1.0, 'z', wheelGroup); // long crank pin
+  cyl(0.055, 0.5, iron, WHEEL.crank, 0, -1.5, 'z', wheelGroup);  // crank pin
 }
 for (const s of [-1, 1]) {
   box(0.2, WHEEL.y + 0.3, 0.2, woodDk, WHEEL.x, (WHEEL.y + 0.3) / 2, s * 1.05);
